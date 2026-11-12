@@ -4,7 +4,7 @@
   "title": "Wiro AI",
   "description": "Generate images, video, speech and music, chat with LLMs, run workflows and agents, and search 1,000+ AI models on Wiro AI.",
   "icon": "extension-icon.png",
-  "author": "eminbudak",
+  "author": "wiroai",
   "categories": [
     "Media",
     "Developer Tools",

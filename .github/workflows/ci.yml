@@ -32,11 +32,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check formatting
-        run: npx prettier --check "src/**/*.{ts,tsx}" "test/**/*.ts"
+      - name: Raycast lint
+        # Manifest (author included), icons, ESLint and Prettier, as the Store's CI runs them.
+        run: npm run lint
 
-      - name: Lint
-        run: npx eslint src test
+      - name: Lint tests
+        run: npx eslint test && npx prettier --check "test/**/*.ts"
 
       - name: Test
         run: npm test
