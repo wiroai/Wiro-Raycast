@@ -254,6 +254,8 @@ export function TaskView({ kind, slug, run, prompt }: TaskViewProps) {
               shortcut={Keyboard.Shortcut.Common.Copy}
             />
           )}
+          <Action.OpenInBrowser title="Open Task History" icon={Icon.List} url={TASK_HISTORY_URL} />
+          <Action.OpenInBrowser title="Open Model Page" icon={Icon.Globe} url={modelPageUrl(slug)} />
           {task && !finished && !pollError && (
             <Action
               title="Cancel Task"
@@ -263,8 +265,6 @@ export function TaskView({ kind, slug, run, prompt }: TaskViewProps) {
               onAction={cancel}
             />
           )}
-          <Action.OpenInBrowser title="Open Model Page" icon={Icon.Globe} url={modelPageUrl(slug)} />
-          <Action.OpenInBrowser title="Open Task History" icon={Icon.List} url={TASK_HISTORY_URL} />
         </ActionPanel>
       }
     />

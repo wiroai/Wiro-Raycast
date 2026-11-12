@@ -3,7 +3,7 @@ import { useCachedPromise, useCachedState } from "@raycast/utils";
 import { useState } from "react";
 import { Chat } from "./components/chat";
 import { GenerateForm } from "./components/generate-form";
-import { isListedModel, startingPrice } from "./lib/params";
+import { formatPrice, isListedModel, startingPrice } from "./lib/params";
 import { formatUsd, listModels, modelPageUrl, modelSlug, type WiroModel } from "./lib/wiro";
 
 const PAGE_SIZE = 30;
@@ -40,7 +40,7 @@ function runCount(model: WiroModel): number | undefined {
 function ModelDetail({ model }: { model: WiroModel }) {
   const slug = modelSlug(model);
   const labels = categoryLabels(model);
-  const price = startingPrice(model);
+  const price = formatPrice(startingPrice(model));
   const runs = runCount(model);
   const description = (model.description || model.seodescription || "").trim();
   const markdown = [model.image ? `![${model.title}](${model.image})` : "", `**${model.title}**`, description]
@@ -63,9 +63,7 @@ function ModelDetail({ model }: { model: WiroModel }) {
             <List.Item.Detail.Metadata.Label title="Typical Run Time" text={model.computingtime} />
           )}
           {runs && <List.Item.Detail.Metadata.Label title="Runs" text={runs.toLocaleString("en-US")} />}
-          {price !== undefined && (
-            <List.Item.Detail.Metadata.Label title="Price" text={`From ${formatUsd(price)} per run`} />
-          )}
+          {price && <List.Item.Detail.Metadata.Label title="Price" text={`From ${price}`} />}
           <List.Item.Detail.Metadata.Link title="Model Page" text="wiro.ai" target={modelPageUrl(slug)} />
         </List.Item.Detail.Metadata>
       }
@@ -131,10 +129,10 @@ export default function SearchModels() {
       {models.map((model) => {
         const slug = modelSlug(model);
         const categories = model.categories ?? [];
-        const makesImages = categories.some((id) => ["text-to-image", "image-to-image", "image-editing"].includes(id));
+        const makesImages = categories.includes("text-to-image");
         const makesVideos = categories.some((id) => ["text-to-video", "image-to-video"].includes(id));
         const onGateway = categories.includes("llm-tool-call");
-        const price = startingPrice(model);
+        const lowest = startingPrice(model)?.amount;
         const firstLabel = categoryLabels(model)[0];
         return (
           <List.Item
@@ -149,7 +147,7 @@ export default function SearchModels() {
                 ? undefined
                 : [
                     ...(firstLabel ? [{ tag: firstLabel }] : []),
-                    ...(price !== undefined ? [{ text: `from ${formatUsd(price)}` }] : []),
+                    ...(lowest !== undefined ? [{ text: `from ${formatUsd(lowest)}` }] : []),
                   ]
             }
             detail={<ModelDetail model={model} />}

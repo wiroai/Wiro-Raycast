@@ -121,6 +121,17 @@ const videoModel: WiroModel = {
 
 test("prompt and image inputs are found", () => {
   assert.equal(promptParameter(imageModel)?.id, "prompt");
+  const negativeFirst = {
+    parameters: [
+      {
+        items: [
+          { id: "negativePrompt", type: "textarea", label: "Negative Prompt" },
+          { id: "inputPrompt", type: "textarea", label: "Prompt" },
+        ],
+      },
+    ],
+  };
+  assert.equal(promptParameter(negativeFirst)?.id, "inputPrompt");
   assert.equal(imageParameter(videoModel)?.id, "inputImage");
   assert.equal(imageParameter({ parameters: [] }), undefined);
 });
@@ -154,7 +165,12 @@ test("prices match the chosen settings", () => {
     formatPrice({ method: "cp-readoutput", amount: 0, note: "Billed by token usage" }),
     "Billed by token usage",
   );
-  assert.equal(startingPrice(imageModel), 0.006);
+  assert.deepEqual(startingPrice(imageModel), { amount: 0.006, method: "cpr" });
+  const perOutput: Pick<WiroModel, "dynamicprice"> = {
+    dynamicprice: [{ inputs: {}, price: 0.035, priceMethod: "cpo" }],
+  };
+  assert.equal(formatPrice(matchPrice(perOutput, {}), "image"), "$0.035 per image");
+  assert.equal(formatPrice(startingPrice(perOutput)), "$0.035 per output");
 });
 
 test("form values become run parameters", () => {

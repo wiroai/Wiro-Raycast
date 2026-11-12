@@ -65,10 +65,11 @@ export function priceInputs(model: Pick<WiroModel, "dynamicprice">): Set<string>
 /** The text parameter the prompt goes to. */
 export function promptParameter(model: Pick<WiroModel, "parameters">): ToolParameter | undefined {
   const items = allParameters(model);
+  const positive = (item: ToolParameter) => !/negative/i.test(item.id) && !/negative/i.test(item.label ?? "");
   return (
     items.find((item) => item.id === "prompt") ??
-    items.find((item) => item.type === "textarea" && /prompt/i.test(item.id)) ??
-    items.find((item) => item.type === "textarea" && !item.advanced)
+    items.find((item) => item.type === "textarea" && /prompt/i.test(item.id) && positive(item)) ??
+    items.find((item) => item.type === "textarea" && !item.advanced && positive(item))
   );
 }
 
@@ -273,19 +274,29 @@ export function matchPrice(model: Pick<WiroModel, "dynamicprice">, values: Recor
   };
 }
 
-export function formatPrice(price: Price | undefined): string | undefined {
+/** Price methods with a fixed amount: per run, and per output file. */
+const FIXED_METHODS = new Set(["cpr", "cpo"]);
+
+/**
+ * A price as people read it, such as "$0.05 per run". `output` names what a per-output price
+ * counts, such as "image". Prices without a fixed amount show the catalog's own note.
+ */
+export function formatPrice(price: Price | undefined, output = "output"): string | undefined {
   if (!price) return undefined;
-  if (price.method === "cpr" && price.amount !== undefined && price.amount > 0) {
-    return `${formatUsd(price.amount)} per run`;
+  if (price.method && FIXED_METHODS.has(price.method) && price.amount !== undefined && price.amount > 0) {
+    return `${formatUsd(price.amount)} per ${price.method === "cpo" ? output : "run"}`;
   }
   return price.note;
 }
 
-/** The lowest per-run price in a model's price list, for list accessories. */
-export function startingPrice(model: Pick<WiroModel, "dynamicprice">): number | undefined {
-  const amounts = priceEntries(model)
-    .filter((entry) => entry.priceMethod === "cpr")
-    .map((entry) => Number(entry.price))
-    .filter((amount) => Number.isFinite(amount) && amount > 0);
-  return amounts.length > 0 ? Math.min(...amounts) : undefined;
+/** The lowest fixed price in a model's price list, for the search list. */
+export function startingPrice(model: Pick<WiroModel, "dynamicprice">): Price | undefined {
+  let lowest: Price | undefined;
+  for (const entry of priceEntries(model)) {
+    const amount = Number(entry.price);
+    if (!entry.priceMethod || !FIXED_METHODS.has(entry.priceMethod) || !Number.isFinite(amount) || amount <= 0)
+      continue;
+    if (!lowest || amount < (lowest.amount ?? Infinity)) lowest = { amount, method: entry.priceMethod };
+  }
+  return lowest;
 }

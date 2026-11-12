@@ -76,7 +76,9 @@ test("task status and outputs", () => {
   assert.equal(statusLabel("task_queue"), "Waiting in queue");
   assert.equal(statusLabel("task_output"), "Generating");
   assert.equal(statusLabel("task_postprocess_end"), "Done");
-  assert.equal(failureReason({ ...task, pexit: "1", debugerror: "line one\nOut of credits" }), "Out of credits");
+  assert.equal(isSuccessful({ ...task, pexit: "" }), true, "an empty exit code is not a failure");
+  assert.equal(isSuccessful({ ...task, status: "task_cancel" }), false);
+  assert.match(failureReason({ status: "task_postprocess_end" }), /could not finish/);
   assert.equal(failureReason({ ...task, status: "task_cancel" }), "The task was cancelled.");
 });
 

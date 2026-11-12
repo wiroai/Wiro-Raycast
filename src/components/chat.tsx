@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Icon, Keyboard, List } from "@raycast/api";
+import { Action, ActionPanel, Clipboard, Icon, Keyboard, List, showToast, Toast } from "@raycast/api";
 import { showFailureToast, useCachedPromise, useCachedState } from "@raycast/utils";
 import { randomUUID } from "node:crypto";
 import { useEffect, useRef, useState } from "react";
@@ -8,6 +8,7 @@ import { modelPageUrl } from "../lib/wiro";
 
 const DEFAULT_MODELS = ["openai/gpt-5-4-mini", "google/gemini-3-5-flash", "deepseek/v4-flash"];
 const HISTORY_TURNS = 20;
+const KEPT_EXCHANGES = 50;
 
 interface Exchange {
   id: string;
@@ -69,13 +70,14 @@ interface ChatProps {
 
 export function Chat({ initialQuestion, initialModel }: ChatProps) {
   const [exchanges, setExchanges] = useCachedState<Exchange[]>("chat-exchanges", []);
-  const [sessionId, setSessionId] = useCachedState<string>("chat-session", randomUUID());
+  const [sessionId, setSessionId] = useCachedState<string>("chat-session", "");
   const [storedModel, setStoredModel] = useCachedState<string>("chat-model", "");
   const [chosenModel, setChosenModel] = useState<string | undefined>(initialModel);
-  const [searchText, setSearchText] = useState("");
+  const [searchText, setSearchText] = useState(initialQuestion?.trim() ?? "");
   const [selectedId, setSelectedId] = useState<string>();
   const [streaming, setStreaming] = useState<{ id: string; text: string }>();
   const abortRef = useRef<AbortController | undefined>(undefined);
+  const askingRef = useRef(false);
   const askedInitial = useRef(false);
 
   const { data: models, isLoading: modelsLoading } = useCachedPromise(listChatModels, [], {
@@ -99,9 +101,9 @@ export function Chat({ initialQuestion, initialModel }: ChatProps) {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  async function ask(rawQuestion: string) {
+  async function ask(rawQuestion: string, options: { fresh?: boolean } = {}) {
     const question = rawQuestion.trim();
-    if (!question || busy) return;
+    if (!question || askingRef.current) return;
     if (!model) {
       await showFailureToast(new Error("The model list has not loaded yet. Try again in a moment."), {
         title: "No model selected",
@@ -109,7 +111,14 @@ export function Chat({ initialQuestion, initialModel }: ChatProps) {
       return;
     }
 
-    const history: ChatMessage[] = [...exchanges]
+    askingRef.current = true;
+    let session = options.fresh ? "" : sessionId;
+    if (!session) {
+      session = randomUUID();
+      setSessionId(session);
+    }
+    const previous = options.fresh ? [] : exchanges;
+    const history: ChatMessage[] = [...previous]
       .reverse()
       .filter((exchange) => exchange.answer && !exchange.error)
       .slice(-HISTORY_TURNS)
@@ -119,7 +128,7 @@ export function Chat({ initialQuestion, initialModel }: ChatProps) {
       ]);
 
     const exchange: Exchange = { id: randomUUID(), question, answer: "", model, askedAt: Date.now() };
-    setExchanges((previous) => [exchange, ...previous]);
+    setExchanges((current) => [exchange, ...(options.fresh ? [] : current)].slice(0, KEPT_EXCHANGES));
     setSelectedId(exchange.id);
     setSearchText("");
     setStreaming({ id: exchange.id, text: "" });
@@ -132,23 +141,21 @@ export function Chat({ initialQuestion, initialModel }: ChatProps) {
         model,
         messages: [...history, { role: "user", content: question }],
         credentials: credentials(),
-        sessionId: `raycast-${sessionId}`,
+        sessionId: `raycast-${session}`,
         signal: controller.signal,
         onText: (text) => {
           partial = text;
           setStreaming({ id: exchange.id, text });
         },
       });
-      setExchanges((previous) =>
-        previous.map((item) =>
-          item.id === exchange.id ? { ...item, answer: result.text, usage: result.usage } : item,
-        ),
+      setExchanges((current) =>
+        current.map((item) => (item.id === exchange.id ? { ...item, answer: result.text, usage: result.usage } : item)),
       );
     } catch (error) {
       const stopped = controller.signal.aborted;
       const message = stopped ? "Stopped." : error instanceof Error ? error.message : String(error);
-      setExchanges((previous) =>
-        previous.map((item) =>
+      setExchanges((current) =>
+        current.map((item) =>
           item.id === exchange.id
             ? { ...item, answer: partial, error: stopped && partial ? undefined : message }
             : item,
@@ -157,6 +164,7 @@ export function Chat({ initialQuestion, initialModel }: ChatProps) {
       if (!stopped) await showFailureToast(error, { title: "Could not get an answer" });
     } finally {
       abortRef.current = undefined;
+      askingRef.current = false;
       setStreaming(undefined);
     }
   }
@@ -164,7 +172,7 @@ export function Chat({ initialQuestion, initialModel }: ChatProps) {
   useEffect(() => {
     if (askedInitial.current || !initialQuestion?.trim() || !model) return;
     askedInitial.current = true;
-    ask(initialQuestion);
+    ask(initialQuestion, { fresh: true });
   }, [initialQuestion, model]);
 
   function newConversation() {
@@ -172,6 +180,7 @@ export function Chat({ initialQuestion, initialModel }: ChatProps) {
     setExchanges([]);
     setSessionId(randomUUID());
     setSelectedId(undefined);
+    setStreaming(undefined);
   }
 
   function chooseModel(next: string) {
@@ -182,10 +191,17 @@ export function Chat({ initialQuestion, initialModel }: ChatProps) {
 
   const answerOf = (exchange: Exchange) => (streaming?.id === exchange.id ? streaming.text : exchange.answer);
 
-  const sendAction =
-    searchText.trim() && !busy ? (
-      <Action title="Send Message" icon={Icon.Message} onAction={() => ask(searchText)} />
-    ) : undefined;
+  const sendAction = searchText.trim() ? (
+    <Action
+      title="Send Message"
+      icon={Icon.Message}
+      onAction={() =>
+        busy
+          ? showToast({ style: Toast.Style.Animated, title: "Waiting for the answer", message: "Stop Answer ends it" })
+          : ask(searchText)
+      }
+    />
+  ) : undefined;
 
   const commonActions = (
     <>
@@ -313,10 +329,14 @@ export function Chat({ initialQuestion, initialModel }: ChatProps) {
                     content={exchange.question}
                     shortcut={Keyboard.Shortcut.Common.CopyName}
                   />
-                  <Action.CopyToClipboard
+                  <Action
                     title="Copy Conversation"
-                    content={conversationMarkdown(exchanges)}
+                    icon={Icon.CopyClipboard}
                     shortcut={Keyboard.Shortcut.Common.Copy}
+                    onAction={async () => {
+                      await Clipboard.copy(conversationMarkdown(exchanges));
+                      await showToast({ style: Toast.Style.Success, title: "Copied conversation" });
+                    }}
                   />
                   {!busy && (
                     <Action

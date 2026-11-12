@@ -1,6 +1,6 @@
 import { Action, ActionPanel, Form, Icon, showToast, Toast, useNavigation } from "@raycast/api";
 import { showFailureToast, useCachedPromise, useCachedState } from "@raycast/utils";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   fieldParams,
   formatPrice,
@@ -75,8 +75,13 @@ export function GenerateForm({ kind, initialModel, initialSource }: GenerateForm
   const [values, setValues] = useState<Record<string, string | boolean>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | undefined>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
-  const { data: models, isLoading: modelsLoading } = useCachedPromise(loadModels, [category], {
+  const {
+    data: models,
+    isLoading: modelsLoading,
+    error: modelsError,
+  } = useCachedPromise(loadModels, [category], {
     keepPreviousData: false,
     failureToastOptions: { title: "Could not load the models" },
   });
@@ -84,7 +89,11 @@ export function GenerateForm({ kind, initialModel, initialSource }: GenerateForm
   const starter = STARTER_MODELS[category]?.find((id) => models?.some((choice) => choice.slug === id));
   const slug = chosenSlug || storedSlug || starter || models?.[0]?.slug;
 
-  const { data: model, isLoading: modelLoading } = useCachedPromise(getModel, [slug ?? ""], {
+  const {
+    data: model,
+    isLoading: modelLoading,
+    error: modelError,
+  } = useCachedPromise(getModel, [slug ?? ""], {
     execute: Boolean(slug),
     failureToastOptions: { title: "Could not load the model settings" },
   });
@@ -103,7 +112,7 @@ export function GenerateForm({ kind, initialModel, initialSource }: GenerateForm
   const runParams = currentModel
     ? { ...hiddenDefaults(currentModel, shownIds), ...fieldParams(fields, fieldValues) }
     : {};
-  const priceText = currentModel ? formatPrice(matchPrice(currentModel, runParams)) : undefined;
+  const priceText = currentModel ? formatPrice(matchPrice(currentModel, runParams), kind) : undefined;
 
   const choices: ModelChoice[] = [...(models ?? [])];
   if (slug && !choices.some((choice) => choice.slug === slug)) choices.unshift({ slug, title: slug });
@@ -124,7 +133,14 @@ export function GenerateForm({ kind, initialModel, initialSource }: GenerateForm
   }
 
   async function submit() {
-    if (!currentModel || !slug || isSubmitting) return;
+    if (submittingRef.current) return;
+    if (!slug || !currentModel) {
+      await showFailureToast(
+        modelError ?? modelsError ?? new Error(slug ? "The model settings are still loading." : "Pick a model first."),
+        { title: "Not ready yet" },
+      );
+      return;
+    }
     const promptRequired = kind === "image" || source === "text" || Boolean(promptParam?.required);
     let valid = true;
 
@@ -157,7 +173,7 @@ export function GenerateForm({ kind, initialModel, initialSource }: GenerateForm
     for (const field of fields) {
       const error = validateField(field, valueOf(field));
       if (error) {
-        errors[field.id] = error;
+        errors[key(field)] = error;
         valid = false;
       }
     }
@@ -169,6 +185,7 @@ export function GenerateForm({ kind, initialModel, initialSource }: GenerateForm
     const files: UploadFile[] =
       imageParam && imageFiles[0] ? [{ field: imageParam.id, path: imageFiles[0], type: imageParam.type }] : [];
 
+    submittingRef.current = true;
     setIsSubmitting(true);
     const toast = await showToast({ style: Toast.Style.Animated, title: "Starting task" });
     try {
@@ -179,16 +196,17 @@ export function GenerateForm({ kind, initialModel, initialSource }: GenerateForm
       await toast.hide();
       await showFailureToast(error, { title: "Could not start the task" });
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   }
 
   function renderField(field: ModelField) {
     const id = key(field);
-    const error = fieldErrors[field.id];
+    const error = fieldErrors[id];
     const onChange = (value: string | boolean) => {
       setValues((previous) => ({ ...previous, [id]: value }));
-      if (error) setFieldErrors((previous) => ({ ...previous, [field.id]: undefined }));
+      if (error) setFieldErrors((previous) => ({ ...previous, [id]: undefined }));
     };
     switch (field.kind) {
       case "dropdown":
@@ -252,14 +270,18 @@ export function GenerateForm({ kind, initialModel, initialSource }: GenerateForm
         </Form.Dropdown>
       )}
       <Form.Dropdown
-        id={`model-${category}`}
+        key={category}
+        id="model"
         title="Model"
         info="Models from the Wiro AI catalog. Search Models finds more."
         value={slug ?? ""}
         onChange={chooseModel}
       >
         {choices.length === 0 ? (
-          <Form.Dropdown.Item value="" title="Loading models…" />
+          <Form.Dropdown.Item
+            value=""
+            title={modelsLoading ? "Loading models…" : modelsError ? "Could not load models" : "No models found"}
+          />
         ) : (
           choices.map((choice) => (
             <Form.Dropdown.Item key={choice.slug} value={choice.slug} title={choice.slug} keywords={[choice.title]} />

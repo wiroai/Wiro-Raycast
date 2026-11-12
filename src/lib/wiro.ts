@@ -83,7 +83,6 @@ export interface Task {
   socketaccesstoken: string;
   status: string;
   pexit?: string;
-  debugerror?: string;
   elapsedseconds?: string;
   totalcost?: string;
   outputs?: TaskOutput[];
@@ -342,8 +341,10 @@ export function isFinished(task: Pick<Task, "status">): boolean {
   return TERMINAL_STATUSES.has(task.status);
 }
 
+/** A finished task failed only when its exit code is set and is not "0". */
 export function isSuccessful(task: Pick<Task, "status" | "pexit">): boolean {
-  return task.status === "task_postprocess_end" && String(task.pexit ?? "") === "0";
+  const pexit = String(task.pexit ?? "").trim();
+  return task.status === "task_postprocess_end" && (pexit === "" || pexit === "0");
 }
 
 /** A short, human label for a task status. */
@@ -381,11 +382,10 @@ export function pollInterval(elapsedMs: number): number {
   return 8_000;
 }
 
-/** Why a finished task has no result, in words the user can act on. */
-export function failureReason(task: Task): string {
+/** Why a finished task has no result. The model's own error log is not shown to users. */
+export function failureReason(task: Pick<Task, "status">): string {
   if (task.status === "task_cancel") return "The task was cancelled.";
-  const detail = (task.debugerror ?? "").trim().split("\n").filter(Boolean).pop();
-  return detail ? detail.slice(0, 300) : "The model could not finish this task.";
+  return "The model could not finish this task. Check the prompt and settings, or try another model.";
 }
 
 export function mediaOutputs(task: Pick<Task, "outputs">, kind: "image" | "video"): TaskOutput[] {

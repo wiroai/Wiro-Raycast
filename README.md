@@ -22,7 +22,7 @@ This [Raycast](https://www.raycast.com) extension puts the [Wiro AI](https://wir
 | --- | --- |
 | **Generate Image** | Pick a text-to-image model, write a prompt and set the model's options, such as resolution, ratio or quality. The image opens in Raycast, where you can copy it, save it or open it in your browser. |
 | **Generate Video** | Make a video from a prompt (text to video) or from an image on your Mac (image to video). Raycast shows the task status while the model works. When the video is ready, open it, copy it or save it. |
-| **Ask AI** | Chat with LLMs from OpenAI, Anthropic, Google, DeepSeek, xAI, Qwen and others through the Wiro AI LLM gateway. Choose the model in the dropdown, ask follow-up questions in the same conversation, and copy or paste the answers. Type a question after the command name to start right away. |
+| **Ask AI** | Chat with LLMs from OpenAI, Anthropic, Google, DeepSeek, xAI, Qwen and others through the Wiro AI LLM gateway. Choose the model in the dropdown, ask follow-up questions in the same conversation, and copy or paste the answers. Type a question after the command name to start a new conversation right away. |
 | **Search Models** | Search the catalog by name, owner or task and filter it by category. Each model shows its cover, description, typical run time and starting price. Open the model page, copy the model ID, or start Generate Image, Generate Video or Ask AI with that model. |
 
 The model forms show each model's main settings with the choices and defaults from its page on wiro.ai, plus every setting that changes the price. The price for the settings you pick appears at the bottom of the form.
@@ -68,7 +68,7 @@ To change them later, open Raycast Settings, then **Extensions → Wiro AI**.
 | Ask AI | Send Message (`↵`), Copy Answer, Paste Answer (`⌘⇧↵`), Copy Question (`⌘⌥C`), Copy Conversation (`⌘⇧C`), Ask Again (`⌘R`), Stop Answer (`⌃X`), New Conversation (`⌘N`) |
 | Search Models | Open Model Page (`↵`), Generate Image, Generate Video, Ask AI, Copy Model ID (`⌘⇧C`), Copy Model Page URL, Show or Hide Details (`⌘⇧D`) |
 
-Ask AI keeps the conversation when you close Raycast. New Conversation starts a fresh one.
+Ask AI keeps the conversation when you close Raycast. New Conversation starts a fresh one, and so does a question typed after the command name.
 
 ## How it works
 
