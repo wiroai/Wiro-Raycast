@@ -39,6 +39,8 @@ export interface ToolParameter {
   required?: boolean;
   advanced?: boolean;
   defaultvalue?: unknown;
+  /** The form's current value; a checkbox's default. */
+  value?: unknown;
   options?: ToolParameterOption[];
   minvalue?: string | number;
   maxvalue?: string | number;
@@ -69,6 +71,12 @@ export interface WiroModel {
   parameters?: ToolParameterGroup[] | null;
   dynamicprice?: PriceEntry[] | string | null;
   taskstat?: { runcount?: number | string } | null;
+  /** Estimated cost of a run for models billed by run time. */
+  approximatelycost?: number | string | null;
+  /** Cost per second of run time, when the model has no price list. */
+  cps?: number | string | null;
+  /** The caller's discount on this model, in percent; set when Tool/Detail is called with a key. */
+  discount?: number | string | null;
 }
 
 export interface TaskOutput {
@@ -78,6 +86,11 @@ export interface TaskOutput {
   url?: string;
 }
 
+export interface TaskOutputContent {
+  answer?: Array<string | { text?: string }> | string | null;
+  raw?: string;
+}
+
 export interface Task {
   id: string;
   socketaccesstoken: string;
@@ -85,7 +98,12 @@ export interface Task {
   pexit?: string;
   elapsedseconds?: string;
   totalcost?: string;
-  outputs?: TaskOutput[];
+  chargedcost?: string | number | null;
+  outputs?: Array<TaskOutput & { content?: TaskOutputContent }>;
+  /** The model's standard output; models such as speech to text print their result there. */
+  debugoutput?: string;
+  parameters?: Record<string, unknown> | null;
+  createtime?: string | number;
   modelslugowner?: string;
   modelslugproject?: string;
 }
@@ -230,13 +248,16 @@ export async function listModels(options: ListModelsOptions = {}): Promise<Model
   return { models: body.tool ?? [], total: Number(body.total ?? 0) || 0 };
 }
 
-/** One model with its parameters and price list. No API key is needed. */
-export async function getModel(slug: string, signal?: AbortSignal): Promise<WiroModel> {
+/**
+ * One model with its parameters and price list. No API key is needed; with one, the answer
+ * also carries the caller's discount on the model.
+ */
+export async function getModel(slug: string, credentials?: Credentials, signal?: AbortSignal): Promise<WiroModel> {
   const [slugowner, slugproject] = splitSlug(slug);
   const body = await post<WiroEnvelope & { tool?: WiroModel[] }>(
     "/Tool/Detail",
     { slugowner, slugproject },
-    undefined,
+    credentials,
     signal,
   );
   const model = body.tool?.[0];
@@ -254,6 +275,24 @@ const MIME_TYPES: Record<string, string> = {
   ".bmp": "image/bmp",
   ".tif": "image/tiff",
   ".tiff": "image/tiff",
+  ".avif": "image/avif",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".m4a": "audio/mp4",
+  ".aac": "audio/aac",
+  ".flac": "audio/flac",
+  ".ogg": "audio/ogg",
+  ".opus": "audio/opus",
+  ".aif": "audio/aiff",
+  ".aiff": "audio/aiff",
+  ".mp4": "video/mp4",
+  ".m4v": "video/x-m4v",
+  ".mov": "video/quicktime",
+  ".webm": "video/webm",
+  ".mkv": "video/x-matroska",
+  ".pdf": "application/pdf",
+  ".txt": "text/plain",
+  ".json": "application/json",
 };
 
 export function mimeType(path: string): string {
@@ -388,23 +427,19 @@ export function failureReason(task: Pick<Task, "status">): string {
   return "The model could not finish this task. Check the prompt and settings, or try another model.";
 }
 
-export function mediaOutputs(task: Pick<Task, "outputs">, kind: "image" | "video"): TaskOutput[] {
-  const pattern = kind === "image" ? /\.(png|jpe?g|webp|gif|bmp|tiff?|heic)$/i : /\.(mp4|mov|webm|m4v|mkv)$/i;
-  return (task.outputs ?? []).filter((output) => {
-    if (!output.url) return false;
-    const type = (output.contenttype ?? "").toLowerCase();
-    if (type.startsWith(`${kind}/`)) return true;
-    const path = output.url.split("?")[0];
-    return pattern.test(path) || pattern.test(output.name ?? "");
-  });
+function trimZeros(value: string): string {
+  if (!value.includes(".")) return value;
+  const trimmed = value.replace(/0+$/, "").replace(/\.$/, "");
+  // Keep cents readable: 0.2 becomes 0.20.
+  return /\.\d$/.test(trimmed) ? `${trimmed}0` : trimmed;
 }
 
-/** A dollar amount with two decimals, or up to four for amounts under a dollar. */
+/** A dollar amount: cents above a dollar, three decimals above a cent, three significant digits below. */
 export function formatUsd(amount: number): string {
+  if (amount === 0) return "$0";
   if (amount >= 1) return `$${amount.toFixed(2)}`;
-  const text = amount.toFixed(amount < 0.01 ? 4 : 3).replace(/0+$/, "");
-  const [whole, fraction = ""] = text.split(".");
-  return `$${whole}.${fraction.padEnd(2, "0")}`;
+  if (amount >= 0.01) return `$${trimZeros(amount.toFixed(3))}`;
+  return `$${trimZeros(amount.toPrecision(3))}`;
 }
 
 export function formatCost(value: string | number | undefined): string | undefined {
@@ -419,4 +454,188 @@ export function formatSeconds(value: string | number | undefined): string | unde
   if (seconds < 60) return `${Math.round(seconds)} s`;
   const minutes = Math.floor(seconds / 60);
   return `${minutes} min ${Math.round(seconds - minutes * 60)} s`;
+}
+
+// Account, history, files, workflows and agents. These act on the API key's project.
+
+export interface WalletBalance {
+  totalUsd: number;
+  depositUsd: number;
+  couponCreditUsd: number;
+  storeRevenueUsd: number;
+}
+
+function money(value: unknown): number {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+/** The balance of the wallet the project pays from, or null when it has no wallet yet. */
+export async function getWallet(credentials: Credentials, signal?: AbortSignal): Promise<WalletBalance | null> {
+  const body = await post<WiroEnvelope & { wallet?: Array<Record<string, unknown>> }>(
+    "/Wallet/List",
+    {},
+    credentials,
+    signal,
+  );
+  const wallets = body.wallet ?? [];
+  const wallet = wallets.find((row) => row.symbol === "USD") ?? wallets[0];
+  if (!wallet) return null;
+  const depositUsd = money(wallet.amount);
+  const couponCreditUsd = money(wallet.giftedamount);
+  const storeRevenueUsd = money(wallet.storeamount);
+  return {
+    totalUsd: Math.round((depositUsd + couponCreditUsd + storeRevenueUsd) * 100) / 100,
+    depositUsd,
+    couponCreditUsd,
+    storeRevenueUsd,
+  };
+}
+
+/** The project's model tasks, newest first. */
+export async function listTasks(
+  credentials: Credentials,
+  options: { start?: number; limit?: number; signal?: AbortSignal } = {},
+): Promise<{ tasks: Task[]; total: number }> {
+  const body = await post<WiroEnvelope & { tasklist?: Task[]; total?: number | string }>(
+    "/Task/List",
+    { type: "model", sort: "id", order: "DESC", start: String(options.start ?? 0), limit: String(options.limit ?? 30) },
+    credentials,
+    options.signal,
+  );
+  return { tasks: body.tasklist ?? [], total: Number(body.total ?? 0) || 0 };
+}
+
+/** Uploads a local file to the project's storage and returns its public URL. */
+export async function uploadFile(path: string, credentials: Credentials, signal?: AbortSignal): Promise<string> {
+  const data = await readFile(path);
+  const form = new FormData();
+  form.append("file", new Blob([data], { type: mimeType(path) }), basename(path));
+  const response = await fetch(`${API_BASE_URL}/File/Upload`, {
+    method: "POST",
+    headers: runApiHeaders(credentials),
+    body: form,
+    signal,
+  });
+  const body = await readJson<WiroEnvelope & { list?: Array<{ url?: string }> }>(response, credentials);
+  const url = body.list?.[0]?.url;
+  if (!url) throw new WiroError(`Wiro AI did not return a link for ${basename(path)}.`);
+  return url;
+}
+
+/** The project's workflows, most recently changed first. */
+export async function listWorkflows(
+  credentials: Credentials,
+  options: { search?: string; start?: number; limit?: number; signal?: AbortSignal } = {},
+): Promise<{ workflows: Array<Record<string, unknown>>; total: number }> {
+  const body: Record<string, unknown> = {
+    scope: "my",
+    sort: "updatetime",
+    order: "DESC",
+    start: String(options.start ?? 0),
+    limit: String(options.limit ?? 30),
+  };
+  if (options.search?.trim()) body.search = options.search.trim();
+  const result = await post<WiroEnvelope & { workflow?: Array<Record<string, unknown>>; total?: number | string }>(
+    "/Workflow/List",
+    body,
+    credentials,
+    options.signal,
+  );
+  return { workflows: result.workflow ?? [], total: Number(result.total ?? 0) || 0 };
+}
+
+/** One workflow, with its inputs and step graph. */
+export async function getWorkflow(
+  fullSlug: string,
+  credentials: Credentials,
+  signal?: AbortSignal,
+): Promise<Record<string, unknown>> {
+  const body = await post<WiroEnvelope & { workflow?: Array<Record<string, unknown>> }>(
+    "/Workflow/Detail",
+    { slug: fullSlug },
+    credentials,
+    signal,
+  );
+  const row = body.workflow?.[0];
+  if (!row) throw new WiroError("Wiro AI could not find this workflow.");
+  return row;
+}
+
+/** Starts a workflow run and returns its token. */
+export async function runWorkflow(
+  fullSlug: string,
+  input: Record<string, unknown>,
+  credentials: Credentials,
+  signal?: AbortSignal,
+): Promise<string> {
+  const body = await post<WiroEnvelope & { workflowtoken?: string }>(
+    "/Workflow/Run",
+    Object.keys(input).length > 0 ? { slug: fullSlug, input } : { slug: fullSlug },
+    credentials,
+    signal,
+  );
+  if (!body.workflowtoken) throw new WiroError("Wiro AI did not start the workflow run.");
+  return body.workflowtoken;
+}
+
+/** A workflow run and its steps. */
+export async function getWorkflowRun(
+  workflowtoken: string,
+  credentials: Credentials,
+  signal?: AbortSignal,
+): Promise<{ run: Record<string, unknown>; nodes: Array<Record<string, unknown>> }> {
+  const body = await post<
+    WiroEnvelope & { workflowrun?: Record<string, unknown>; workflowrunnodes?: Array<Record<string, unknown>> }
+  >("/Workflow/RunDetail", { workflowtoken }, credentials, signal);
+  return { run: body.workflowrun ?? { workflowtoken }, nodes: body.workflowrunnodes ?? [] };
+}
+
+/** The agents deployed in the project's workspace. */
+export async function listAgents(
+  credentials: Credentials,
+  options: { start?: number; limit?: number; signal?: AbortSignal } = {},
+): Promise<Array<Record<string, unknown>>> {
+  const body = await post<WiroEnvelope & { useragents?: Array<Record<string, unknown>> }>(
+    "/UserAgent/MyAgents",
+    { sort: "lastactivityat", order: "DESC", start: options.start ?? 0, limit: options.limit ?? 50 },
+    credentials,
+    options.signal,
+  );
+  return body.useragents ?? [];
+}
+
+/** Sends a message to a deployed agent and returns the message id. The agent's credits pay for it. */
+export async function sendAgentMessage(
+  agentGuid: string,
+  message: string,
+  sessionKey: string,
+  credentials: Credentials,
+  signal?: AbortSignal,
+): Promise<string> {
+  const body = await post<WiroEnvelope & { messageguid?: string }>(
+    "/UserAgent/Message/Send",
+    { useragentguid: agentGuid, message, sessionkey: sessionKey },
+    credentials,
+    signal,
+  );
+  if (!body.messageguid) throw new WiroError("The agent did not accept the message.");
+  return body.messageguid;
+}
+
+/** One message of a deployed agent, with its status and reply so far. */
+export async function getAgentMessage(
+  agentGuid: string,
+  messageId: string,
+  credentials: Credentials,
+  signal?: AbortSignal,
+): Promise<Record<string, unknown>> {
+  const body = await post<WiroEnvelope & { data?: Record<string, unknown> }>(
+    "/UserAgent/Message/Detail",
+    { useragentguid: agentGuid, messageguid: messageId },
+    credentials,
+    signal,
+  );
+  if (!body.data) throw new WiroError("Wiro AI could not find the message.");
+  return body.data;
 }

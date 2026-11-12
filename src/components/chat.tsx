@@ -197,7 +197,11 @@ export function Chat({ initialQuestion, initialModel }: ChatProps) {
       icon={Icon.Message}
       onAction={() =>
         busy
-          ? showToast({ style: Toast.Style.Animated, title: "Waiting for the answer", message: "Stop Answer ends it" })
+          ? showToast({
+              style: Toast.Style.Failure,
+              title: "Wait for the answer first",
+              message: "Stop Answer ends it",
+            })
           : ask(searchText)
       }
     />

@@ -4,7 +4,7 @@
 
 # Wiro AI for Raycast
 
-Generate images and videos, chat with GPT, Claude, Gemini and other LLMs, and search 1,000+ AI models on Wiro AI from Raycast.
+Generate images, video, speech and music, edit images, transcribe audio, chat with LLMs, run workflows and agents, and search 1,000+ AI models on Wiro AI from Raycast.
 
 [![Raycast extension](https://img.shields.io/badge/Raycast-extension-111111?style=for-the-badge&color=111111)](https://www.raycast.com/) [![macOS](https://img.shields.io/badge/platform-macOS-111111?style=for-the-badge&color=111111)](#install) [![CI](https://img.shields.io/github/actions/workflow/status/wiroai/Wiro-Raycast/ci.yml?branch=main&style=for-the-badge&label=CI&color=111111)](https://github.com/wiroai/Wiro-Raycast/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-111111?style=for-the-badge&color=111111)](./LICENSE)
 
@@ -14,18 +14,39 @@ Generate images and videos, chat with GPT, Claude, Gemini and other LLMs, and se
 
 </div>
 
-This [Raycast](https://www.raycast.com) extension puts the [Wiro AI](https://wiro.ai) API in your launcher. Pick a model, write a prompt and get the result back in Raycast: copy an image to the clipboard, save a video to a folder, or keep a conversation going with the LLM you choose. Model lists, settings and prices come from the live Wiro AI catalog, so new models show up without an update to the extension.
+This [Raycast](https://www.raycast.com) extension puts the [Wiro AI](https://wiro.ai) API in your launcher. Each command lists the models of its category straight from the Wiro AI catalog, builds its form from the chosen model's own inputs and shows the price for your settings before you run it. Results come back into Raycast, where you can copy them, save them to Downloads, show them in Finder or preview them with Quick Look. New models show up without an update to the extension.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| **Generate Image** | Pick a text-to-image model, write a prompt and set the model's options, such as resolution, ratio or quality. The image opens in Raycast, where you can copy it, save it or open it in your browser. |
-| **Generate Video** | Make a video from a prompt (text to video) or from an image on your Mac (image to video). Raycast shows the task status while the model works. When the video is ready, open it, copy it or save it. |
-| **Ask AI** | Chat with LLMs from OpenAI, Anthropic, Google, DeepSeek, xAI, Qwen and others through the Wiro AI LLM gateway. Choose the model in the dropdown, ask follow-up questions in the same conversation, and copy or paste the answers. Type a question after the command name to start a new conversation right away. |
-| **Search Models** | Search the catalog by name, owner or task and filter it by category. Each model shows its cover, description, typical run time and starting price. Open the model page, copy the model ID, or start Generate Image, Generate Video or Ask AI with that model. |
+| **Generate Image** | Pick a text-to-image model, write a prompt and set the model's options, such as resolution, ratio or quality. |
+| **Edit Image** | Starts from the image selected in Finder or an image file on the clipboard. Edit it with a prompt, upscale it, remove its background or restore an old photo, each with the models of that category. |
+| **Generate Video** | Make a video from a prompt or from an image. Raycast follows the task while the model works, and you can cancel it. |
+| **Generate Speech** | Reads the text selected in the frontmost app aloud, with the text-to-speech model and the voice you pick. |
+| **Generate Music** | Make music or a song from a prompt, with lyrics when the model takes them. |
+| **Transcribe Audio** | Turns an audio file, such as the one selected in Finder, into text you can copy, paste or save. |
+| **Ask AI** | Chat with LLMs from OpenAI, Anthropic, Google, DeepSeek, xAI, Qwen and others through the Wiro AI LLM gateway. Pick the model in the dropdown and ask follow-up questions in the same conversation. Type a question after the command name to start a new conversation right away. |
+| **Search Models** | Search the catalog by name, owner or task and filter it by category. Each model shows its cover, description, typical run time and starting price, and opens in the form that fits it. |
+| **Run Any Model** | Search the whole catalog and run any model with a form built from its inputs: text, choices, numbers, switches and file pickers. |
+| **Run Workflow** | Lists your Wiro AI workflows and runs one with its inputs. Files you pick are uploaded for the run, and every output of the workflow comes back as its own result. |
+| **Message Agent** | Lists the agents deployed in your workspace with their status and credits, and lets you message a running one and read its replies. |
+| **Task History** | Your recent tasks with their status, prompt, run time and cost. Open any of them to get its results again. |
+| **Wallet Balance** | Shows your balance in the menu bar, with links to add funds, your task history and the dashboard. |
 
-The model forms show each model's main settings with the choices and defaults from its page on wiro.ai, plus every setting that changes the price. The price for the settings you pick appears at the bottom of the form.
+Settings the catalog shows by default, settings that change the price and key settings such as voice or duration come first in each form. The rest wait behind **Show advanced settings**, and required settings you leave there are sent with the model's default.
+
+## Results
+
+Every output is a row with a preview beside it.
+
+| Output | Actions |
+| --- | --- |
+| Image | Copy Image (`↵`), Save to Downloads (`⌘S`), Show in Finder (`⌘⇧F`), Quick Look (`⌘Y`), Open (`⌘O`), Open in Browser, Copy URL (`⌘⇧C`) |
+| Video and audio | Open (`↵`), Quick Look (`⌘Y`), Save to Downloads (`⌘S`), Show in Finder (`⌘⇧F`), Copy Video or Copy Audio (`⌘⇧V`), Open in Browser, Copy URL (`⌘⇧C`) |
+| Text | Copy Text (`↵`), Paste Text (`⌘⇧↵`), Save to Downloads (`⌘S`), Show in Finder (`⌘⇧F`) |
+
+While a task runs you can open your task history on wiro.ai or cancel the task (`⌃X`). Closing Raycast does not stop a task; its result is in Task History.
 
 ## Install
 
@@ -40,7 +61,7 @@ To run the extension from this repository:
    npm install
    ```
 
-3. Run `npm run dev`. Raycast loads the extension, and its four commands stay in Raycast after you stop the command with `Ctrl+C`.
+3. Run `npm run dev`. Raycast loads the extension, and its commands stay in Raycast after you stop the command with `Ctrl+C`.
 
 ## Set up
 
@@ -54,34 +75,23 @@ Raycast asks for your API key the first time you open one of the commands.
 | --- | --- | --- |
 | API Key | Yes | API key of your Wiro AI project |
 | API Secret | For signature-based projects | API secret of the same project |
-| Save Folder | No | Where Save Image and Save Video put files. Your Downloads folder is used when it is empty |
+| Save Folder | No | Where Save puts files. Your Downloads folder is used when it is empty |
 
-To change them later, open Raycast Settings, then **Extensions → Wiro AI**.
-
-## Actions
-
-| Screen | Actions |
-| --- | --- |
-| Image result | Copy Image (`↵`), Save Image (`⌘S`), Open Image in Browser (`⌘O`), Copy Image URL (`⌘⇧C`), Open Model Page, Open Task History |
-| Video result | Open Video (`↵`), Save Video (`⌘S`), Copy Video (`⌘⇧V`), Copy Video URL (`⌘⇧C`), Open Model Page, Open Task History |
-| Running task | Cancel Task (`⌃X`), Open Model Page, Open Task History |
-| Ask AI | Send Message (`↵`), Copy Answer, Paste Answer (`⌘⇧↵`), Copy Question (`⌘⌥C`), Copy Conversation (`⌘⇧C`), Ask Again (`⌘R`), Stop Answer (`⌃X`), New Conversation (`⌘N`) |
-| Search Models | Open Model Page (`↵`), Generate Image, Generate Video, Ask AI, Copy Model ID (`⌘⇧C`), Copy Model Page URL, Show or Hide Details (`⌘⇧D`) |
-
-Ask AI keeps the conversation when you close Raycast. New Conversation starts a fresh one, and so does a question typed after the command name.
+To change them later, open Raycast Settings, then **Extensions → Wiro AI**. Edit Image and Transcribe Audio read the Finder selection, and Generate Speech reads the selected text; macOS may ask you to let Raycast do that the first time.
 
 ## How it works
 
-- Generate Image and Generate Video read the model list for their category from the public catalog (`POST /Tool/List`) and the chosen model's settings and price list from `POST /Tool/Detail`. Required settings the form does not show are sent with the catalog default.
-- A run is `POST /Run/{owner}/{model}` on `https://api.wiro.ai/v1`: JSON for a prompt, multipart form data when an image is attached ([Run a Model](https://wiro.ai/docs/run-a-model)).
-- The extension polls `POST /Task/Detail` every few seconds until the task reaches `task_postprocess_end` or `task_cancel`, and checks `pexit` (`"0"` means success) before it shows the outputs ([Tasks](https://wiro.ai/docs/tasks)). Cancel Task calls `Task/Cancel` for a queued task and `Task/Kill` for a running one.
-- Ask AI sends the conversation to `POST /v1/chat/completions` on the OpenAI-compatible gateway at `https://llm.wiro.ai/v1` with `stream: true`, and lists models from `GET /v1/models` ([LLM gateway](https://wiro.ai/docs/completions-api)).
-- Signature-based projects sign every Run API request with `x-nonce` and `x-signature`, an HMAC-SHA256 of the secret and the nonce keyed with the API key. The gateway takes `key:secret` as its Bearer token ([Authentication](https://wiro.ai/docs/authentication)).
-- Your key and secret stay in Raycast's encrypted preferences and go only to `api.wiro.ai` and `llm.wiro.ai`.
+- Each command maps to catalog categories, never to fixed models: Edit Image uses `image-editing`, `upscale`, `background-removal` and `restoration`, Generate Music uses `text-to-music` and `text-to-song`, Transcribe Audio uses `speech-to-text`, and so on. The forms read the models with `POST /Tool/List` and a model's inputs and price list with `POST /Tool/Detail`.
+- File inputs are found by their type and name, so a model that calls its image `inputImage` and one that calls it `firstFrame` both get the file you picked. Models that cannot take that kind of file are left out of the picker.
+- A run is `POST /Run/{owner}/{model}` on `https://api.wiro.ai/v1`: JSON for text-only runs, multipart form data with your files otherwise ([Run a Model](https://wiro.ai/docs/run-a-model)). The extension polls `POST /Task/Detail` until the task reaches `task_postprocess_end` or `task_cancel`, and a finished task failed only when its `pexit` is set and is not `"0"` ([Tasks](https://wiro.ai/docs/tasks)).
+- The price line follows how Wiro bills: the price list row that matches your settings, per run, per output, per character, per second of audio or video, or by run time when there is no list. A discount on your account shows on the same line.
+- Workflows run with `POST /Workflow/Run` and are followed with `POST /Workflow/RunDetail`; files you pick for a workflow are uploaded with `POST /File/Upload` first. Agents are messaged with `POST /UserAgent/Message/Send` and read with `POST /UserAgent/Message/Detail`.
+- Ask AI sends the conversation to `POST /v1/chat/completions` on the OpenAI-compatible gateway at `https://llm.wiro.ai/v1` ([LLM gateway](https://wiro.ai/docs/completions-api)).
+- Signature-based projects sign every Run API request with `x-nonce` and `x-signature`, an HMAC-SHA256 of the secret and the nonce keyed with the API key; the gateway takes `key:secret` as its Bearer token ([Authentication](https://wiro.ai/docs/authentication)). Your key and secret stay in Raycast's encrypted preferences and go only to `api.wiro.ai` and `llm.wiro.ai`.
 
 ## Pricing
 
-Searching models and reading their settings is free. Model runs and chat messages are charged to your project's wallet at each model's price on wiro.ai. When a model has a price list, the form shows the price for your settings, and the result shows what the task cost. Failed tasks are not charged. Ask AI shows each model's price per million tokens next to its answers.
+Searching models and reading their settings is free. Model runs, workflow steps and chat messages are charged to your project's wallet at each model's price on wiro.ai, and failed tasks are not charged. Each form shows the price for your settings before you run it, and each result shows what the task cost. Messages to your own agents use the agent's credits.
 
 ## Development
 
@@ -89,11 +99,11 @@ Searching models and reading their settings is free. Model runs and chat message
 npm install
 npm run dev     # load the extension in Raycast in development mode
 npm run lint    # ESLint, Prettier and Raycast's manifest checks
-npm test        # unit tests for the API, parameter and price code
+npm test        # unit tests
 npm run build   # distribution build
 ```
 
-The unit tests cover request signing, model settings, defaults, price matching, task status and output handling, and stream parsing, without calling the API.
+The unit tests cover request signing, schema reading (prompts, file inputs, input fit, settings and defaults), the price engine, task outputs, workflow inputs and outputs, agent replies and stream parsing, without calling the API.
 
 ## More from Wiro AI
 
@@ -119,7 +129,7 @@ The unit tests cover request signing, model settings, defaults, price matching, 
 | [Wiro-Hermes](https://github.com/wiroai/Wiro-Hermes) | Wiro AI model provider plugin for Hermes Agent |
 | [Wiro-Zed](https://github.com/wiroai/Wiro-Zed) | Wiro AI MCP server extension for Zed |
 | [Wiro-Action](https://github.com/wiroai/Wiro-Action) | GitHub Action for Wiro AI models and the LLM gateway, [on the GitHub Marketplace](https://github.com/marketplace/actions/wiro-ai-action) |
-| [Wiro-Raycast](https://github.com/wiroai/Wiro-Raycast) | Wiro AI extension for Raycast: image and video generation, LLM chat and model search |
+| [Wiro-Raycast](https://github.com/wiroai/Wiro-Raycast) | Wiro AI extension for Raycast: image, video, speech and music, LLM chat, workflows, agents and model search |
 | [Wiro-Docs](https://github.com/wiroai/Wiro-Docs) | Source of the Wiro AI API docs |
 
 [Website](https://wiro.ai) · [Models](https://wiro.ai/models) · [Docs](https://wiro.ai/docs) · [X](https://x.com/wiroai)

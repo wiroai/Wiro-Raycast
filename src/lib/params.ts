@@ -1,15 +1,133 @@
-import { formatUsd, type PriceEntry, type ToolParameter, type ToolParameterOption, type WiroModel } from "./wiro";
+import type { ToolParameter, ToolParameterOption, WiroModel } from "./wiro";
+
+// Reads a model's parameter schema (Tool/Detail) and turns it into form fields.
+// Models in one category name their inputs differently (inputImage, firstFrame,
+// inputAudio, text, prompt), so the file inputs and the prompt are found by
+// their type, id and label rather than by a fixed name.
 
 export const FILE_TYPES = new Set(["fileinput", "multifileinput", "combinefileinput"]);
 const SELECT_TYPES = new Set(["select", "selectwithcover"]);
 const NUMBER_TYPES = new Set(["number", "float", "range"]);
 const TEXT_TYPES = new Set(["text", "textarea"]);
 
-/** Models that are kept out of the pickers and the search list. */
-const HIDDEN_MODEL = /uncensored|heretic|obliterated|nsfw/i;
+export type MediaKind = "image" | "video" | "audio" | "file";
 
-export function isListedModel(slug: string, title = ""): boolean {
-  return !HIDDEN_MODEL.test(slug) && !HIDDEN_MODEL.test(title);
+// Models the extension never lists: sexual content has no place in the Store.
+// Some uncensored chat models say so only in their description. A model that
+// detects NSFW content is a moderation tool and stays in.
+const UNCENSORED = /uncensored|decensored|abliterated|obliterated|heretic|refusal[- ]reduced/i;
+const NSFW = /nsfw/i;
+const MODERATION = /detect|classif|moderat|filter|checker/i;
+
+export function isListedModel(slug: string, title = "", description = ""): boolean {
+  if (UNCENSORED.test(`${slug} ${title} ${description}`)) return false;
+  const name = `${slug} ${title}`;
+  return !(NSFW.test(name) && !MODERATION.test(name));
+}
+
+/** Live (realtime) models need a streaming session, which a one-shot run cannot give them. */
+export function isLiveModel(model: Pick<WiroModel, "categories" | "dynamicprice">): boolean {
+  const categories = model.categories ?? [];
+  if (categories.some((category) => /realtime/i.test(category))) return true;
+  const prices = typeof model.dynamicprice === "string" ? model.dynamicprice : JSON.stringify(model.dynamicprice ?? []);
+  return prices.includes("cp-realtimeturn");
+}
+
+export function allParameters(model: Pick<WiroModel, "parameters">): ToolParameter[] {
+  return (model.parameters ?? []).flatMap((group) => group?.items ?? []).filter((item) => Boolean(item?.id));
+}
+
+export function isFileParameter(item: ToolParameter): boolean {
+  return FILE_TYPES.has(String(item.type).toLowerCase());
+}
+
+/** The kind of file a file parameter takes, from its id, label and placeholder. */
+export function fileKind(item: ToolParameter): MediaKind {
+  const text = `${item.id} ${item.label ?? ""} ${item.placeholder ?? ""}`.toLowerCase();
+  if (/video|clip|mp4|footage/.test(text)) return "video";
+  if (/audio|voice|speech|song|music|sound|mp3|wav|vocal/.test(text)) return "audio";
+  if (
+    /image|photo|picture|face|portrait|frame|logo|mask|garment|cloth|human|person|product|reference|selfie|avatar|style/.test(
+      text,
+    )
+  ) {
+    return "image";
+  }
+  return "file";
+}
+
+export interface FileSlot {
+  param: ToolParameter;
+  kind: MediaKind;
+  /** combinefileinput and multifileinput take several files. */
+  multiple: boolean;
+}
+
+/** The model's file inputs, in schema order. */
+export function fileSlots(model: Pick<WiroModel, "parameters">): FileSlot[] {
+  return allParameters(model)
+    .filter(isFileParameter)
+    .map((param) => ({
+      param,
+      kind: fileKind(param),
+      multiple: String(param.type).toLowerCase() !== "fileinput",
+    }));
+}
+
+/** Text fields that only repeat a file field as a URL (inputImageUrl, inputDocumentUrlMultiple). */
+function urlTwinIds(model: Pick<WiroModel, "parameters">): Set<string> {
+  const ids = new Set<string>();
+  const items = allParameters(model);
+  for (const slot of fileSlots(model)) {
+    const id = slot.param.id;
+    const twins = [`${id}url`, id.endsWith("Multiple") ? id.replace(/Multiple$/, "UrlMultiple") : `${id}UrlMultiple`];
+    for (const item of items) {
+      if (twins.some((twin) => twin.toLowerCase() === item.id.toLowerCase())) ids.add(item.id);
+    }
+  }
+  return ids;
+}
+
+const PROMPT_ID =
+  /^(prompt|text|script|lyrics|caption|captions|instruction|instructions|query|question|message|userprompt|user_prompt|inputtext|input_text)$/i;
+const NEGATIVE = /negative/i;
+
+/** The text parameter the prompt goes to. */
+export function promptParameter(model: Pick<WiroModel, "parameters">): ToolParameter | undefined {
+  const items = allParameters(model).filter((item) => !isFileParameter(item));
+  const positive = (item: ToolParameter) => !NEGATIVE.test(item.id) && !NEGATIVE.test(item.label ?? "");
+  return (
+    items.find((item) => item.id === "prompt") ??
+    items.find((item) => PROMPT_ID.test(item.id) && positive(item)) ??
+    items.find((item) => item.type === "textarea" && /prompt/i.test(item.id) && positive(item)) ??
+    items.find((item) => item.type === "textarea" && item.required && positive(item)) ??
+    items.find((item) => item.type === "textarea" && !item.advanced && positive(item))
+  );
+}
+
+/** The file input a file of this kind goes to: the first slot of that kind, else a slot of no clear kind. */
+export function primarySlot(model: Pick<WiroModel, "parameters">, kind: MediaKind): FileSlot | undefined {
+  const slots = fileSlots(model);
+  const usable = (slot: FileSlot) => !/last|end|mask/i.test(slot.param.id);
+  return (
+    slots.find((slot) => slot.kind === kind && usable(slot) && !slot.param.advanced) ??
+    slots.find((slot) => slot.kind === kind && usable(slot)) ??
+    slots.find((slot) => slot.kind === "file" && usable(slot))
+  );
+}
+
+export type InputFit = "full" | "partial" | "none";
+
+/**
+ * How well a model fits the input a command has: `full` when that input is all it needs,
+ * `partial` when it also requires another file, `none` when it cannot take it.
+ */
+export function inputFit(model: Pick<WiroModel, "parameters">, input: MediaKind | "text"): InputFit {
+  if (input === "text") return promptParameter(model) ? "full" : "none";
+  const primary = primarySlot(model, input);
+  if (!primary) return "none";
+  const needsMore = fileSlots(model).some((slot) => slot.param.required && slot.param.id !== primary.param.id);
+  return needsMore ? "partial" : "full";
 }
 
 export interface FieldOption {
@@ -27,61 +145,15 @@ export interface ModelField {
   info?: string;
   placeholder?: string;
   required: boolean;
+  /** Shown only when the user asks for advanced settings. */
+  advanced: boolean;
   defaultValue: string | boolean;
   options: FieldOption[];
   min?: number;
   max?: number;
   integer: boolean;
-}
-
-export function allParameters(model: Pick<WiroModel, "parameters">): ToolParameter[] {
-  return (model.parameters ?? []).flatMap((group) => group?.items ?? []).filter((item) => Boolean(item?.id));
-}
-
-/** The price list of a model; Tool/List sends it as a JSON string and Tool/Detail as an array. */
-export function priceEntries(model: Pick<WiroModel, "dynamicprice">): PriceEntry[] {
-  const value = model.dynamicprice;
-  if (Array.isArray(value)) return value;
-  if (typeof value === "string" && value.trim().startsWith("[")) {
-    try {
-      const parsed = JSON.parse(value) as unknown;
-      return Array.isArray(parsed) ? (parsed as PriceEntry[]) : [];
-    } catch {
-      return [];
-    }
-  }
-  return [];
-}
-
-/** Settings that change the price, which the form shows even when the catalog marks them advanced. */
-export function priceInputs(model: Pick<WiroModel, "dynamicprice">): Set<string> {
-  const ids = new Set<string>();
-  for (const entry of priceEntries(model)) {
-    for (const key of Object.keys(entry.inputs ?? {})) ids.add(key);
-  }
-  return ids;
-}
-
-/** The text parameter the prompt goes to. */
-export function promptParameter(model: Pick<WiroModel, "parameters">): ToolParameter | undefined {
-  const items = allParameters(model);
-  const positive = (item: ToolParameter) => !/negative/i.test(item.id) && !/negative/i.test(item.label ?? "");
-  return (
-    items.find((item) => item.id === "prompt") ??
-    items.find((item) => item.type === "textarea" && /prompt/i.test(item.id) && positive(item)) ??
-    items.find((item) => item.type === "textarea" && !item.advanced && positive(item))
-  );
-}
-
-/** The file parameter a source image goes to: the first image-like file input. */
-export function imageParameter(model: Pick<WiroModel, "parameters">): ToolParameter | undefined {
-  const files = allParameters(model).filter((item) => FILE_TYPES.has(item.type));
-  const looksLikeImage = (item: ToolParameter) =>
-    /image|frame|photo|picture/i.test(item.id) || /image|frame|photo|picture/i.test(item.label ?? "");
-  return (
-    files.find((item) => !item.advanced && looksLikeImage(item) && !/last|end|mask/i.test(item.id)) ??
-    files.find((item) => looksLikeImage(item) && !/last|end|mask/i.test(item.id))
-  );
+  /** Long text, such as lyrics, shown as a text area. */
+  multiline?: boolean;
 }
 
 function optionValue(option: ToolParameterOption): string | undefined {
@@ -107,12 +179,13 @@ function numberOrUndefined(value: unknown): number | undefined {
   return Number.isFinite(number) ? number : undefined;
 }
 
-function toField(item: ToolParameter): ModelField | undefined {
+function toField(item: ToolParameter, advanced: boolean): ModelField | undefined {
   const title = titleCase(item.label?.trim() || item.id);
   const info = [item.description, item.note].map((text) => text?.trim()).find(Boolean);
   const required = Boolean(item.required);
+  const type = String(item.type).toLowerCase();
 
-  if (SELECT_TYPES.has(item.type)) {
+  if (SELECT_TYPES.has(type)) {
     const options: FieldOption[] = [];
     for (const option of item.options ?? []) {
       const value = optionValue(option);
@@ -122,24 +195,25 @@ function toField(item: ToolParameter): ModelField | undefined {
     if (options.length === 0) return undefined;
     const fallback = String(item.defaultvalue ?? "");
     const defaultValue = options.some((option) => option.value === fallback) ? fallback : options[0].value;
-    return { id: item.id, kind: "dropdown", title, info, required, defaultValue, options, integer: false };
+    return { id: item.id, kind: "dropdown", title, info, required, advanced, defaultValue, options, integer: false };
   }
 
-  if (item.type === "checkbox") {
-    const value = String(item.defaultvalue ?? "").toLowerCase();
+  if (type === "checkbox") {
+    const value = String(item.defaultvalue ?? item.value ?? "").toLowerCase();
     return {
       id: item.id,
       kind: "checkbox",
       title,
       info,
       required: false,
+      advanced,
       defaultValue: value === "true" || value === "1",
       options: [],
       integer: false,
     };
   }
 
-  if (NUMBER_TYPES.has(item.type)) {
+  if (NUMBER_TYPES.has(type)) {
     const min = numberOrUndefined(item.minvalue);
     const max = numberOrUndefined(item.maxvalue);
     const fallback = numberOrUndefined(item.defaultvalue);
@@ -151,15 +225,16 @@ function toField(item: ToolParameter): ModelField | undefined {
       info: [info, range ? `Allowed values: ${range}.` : undefined].filter(Boolean).join(" ") || undefined,
       placeholder: range ?? item.placeholder,
       required,
+      advanced,
       defaultValue: fallback === undefined ? "" : String(fallback),
       options: [],
       min,
       max,
-      integer: item.type !== "float",
+      integer: type !== "float",
     };
   }
 
-  if (TEXT_TYPES.has(item.type)) {
+  if (TEXT_TYPES.has(type)) {
     return {
       id: item.id,
       kind: "text",
@@ -167,50 +242,78 @@ function toField(item: ToolParameter): ModelField | undefined {
       info,
       placeholder: item.placeholder?.trim() || title,
       required,
+      advanced,
       defaultValue: "",
       options: [],
       integer: false,
+      multiline: type === "textarea",
     };
   }
 
   return undefined;
 }
 
+/** Settings that change the price, which the form shows even when the catalog marks them advanced. */
+export function priceInputs(model: Pick<WiroModel, "dynamicprice">): Set<string> {
+  const ids = new Set<string>();
+  const value = model.dynamicprice;
+  let rows: unknown = value;
+  if (typeof value === "string") {
+    try {
+      rows = JSON.parse(value);
+    } catch {
+      rows = [];
+    }
+  }
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const inputs = row && typeof row === "object" ? (row as { inputs?: Record<string, unknown> }).inputs : undefined;
+    for (const key of Object.keys(inputs ?? {})) ids.add(key);
+  }
+  return ids;
+}
+
+// Settings people expect to see first, whatever the catalog marks as advanced.
+const KEY_SETTING =
+  /^(voice|voiceid|voice_id|speaker|language|languagecode|duration|resolution|ratio|aspectratio|aspect_ratio)$/i;
+
 /**
- * The settings a form shows for a model: everything the catalog shows by default, plus the
- * advanced settings that change the price. Prompt and file inputs have their own fields.
+ * The settings a form shows for a model, prompt and file inputs left out (they have their
+ * own fields). Settings the catalog shows by default, the ones that change the price and key
+ * settings such as voice come first; the rest are marked advanced.
  */
 export function modelFields(model: Pick<WiroModel, "parameters" | "dynamicprice">): ModelField[] {
   const prompt = promptParameter(model)?.id;
+  const twins = urlTwinIds(model);
   const pricing = priceInputs(model);
   const fields: ModelField[] = [];
   for (const item of allParameters(model)) {
-    if (item.id === prompt || FILE_TYPES.has(item.type)) continue;
-    if (item.advanced && !pricing.has(item.id)) continue;
-    const field = toField(item);
+    if (item.id === prompt || isFileParameter(item) || twins.has(item.id)) continue;
+    const advanced = Boolean(item.advanced) && !pricing.has(item.id) && !KEY_SETTING.test(item.id) && !item.required;
+    const field = toField(item, advanced);
     if (field && !fields.some((existing) => existing.id === field.id)) fields.push(field);
   }
   return fields;
 }
 
 /**
- * Defaults for required settings the form does not show, so the run validates. Only selects,
+ * Defaults for required settings the form does not send, so the run validates. Only selects,
  * numbers and checkboxes are filled: text and file defaults in the catalog are samples.
  */
 export function hiddenDefaults(
   model: Pick<WiroModel, "parameters">,
-  shownIds: Iterable<string>,
+  sentIds: Iterable<string>,
 ): Record<string, string | number> {
-  const shown = new Set(shownIds);
+  const sent = new Set(sentIds);
   const values: Record<string, string | number> = {};
   for (const item of allParameters(model)) {
-    if (shown.has(item.id) || !item.required) continue;
+    if (sent.has(item.id) || !item.required) continue;
     const fallback = item.defaultvalue;
     if (fallback === undefined || fallback === null || fallback === "") continue;
-    if (NUMBER_TYPES.has(item.type)) {
+    const type = String(item.type).toLowerCase();
+    if (NUMBER_TYPES.has(type)) {
       const number = numberOrUndefined(fallback);
-      if (number !== undefined) values[item.id] = item.type === "float" ? number : Math.round(number);
-    } else if (SELECT_TYPES.has(item.type) || item.type === "checkbox") {
+      if (number !== undefined) values[item.id] = type === "float" ? number : Math.round(number);
+    } else if (SELECT_TYPES.has(type) || type === "checkbox") {
       values[item.id] = String(fallback);
     }
   }
@@ -251,52 +354,14 @@ export function fieldParams(fields: ModelField[], values: Record<string, unknown
   return params;
 }
 
-export interface Price {
-  amount?: number;
-  method?: string;
-  note?: string;
-}
+const MEDIA_EXTENSIONS: Record<Exclude<MediaKind, "file">, RegExp> = {
+  image: /\.(png|jpe?g|webp|gif|bmp|tiff?|heic|heif|avif)$/i,
+  video: /\.(mp4|mov|m4v|webm|mkv|avi)$/i,
+  audio: /\.(mp3|wav|m4a|aac|flac|ogg|opus|aiff?|caf|webm)$/i,
+};
 
-/** The price list entry that matches the chosen settings, if the model has one. */
-export function matchPrice(model: Pick<WiroModel, "dynamicprice">, values: Record<string, unknown>): Price | undefined {
-  const entries = priceEntries(model);
-  const match = entries.find((entry) =>
-    Object.entries(entry.inputs ?? {}).every(
-      ([key, expected]) => String(values[key] ?? "").toLowerCase() === String(expected).toLowerCase(),
-    ),
-  );
-  if (!match) return undefined;
-  const amount = Number(match.price);
-  return {
-    amount: Number.isFinite(amount) ? amount : undefined,
-    method: match.priceMethod,
-    note: match.note?.trim() || undefined,
-  };
-}
-
-/** Price methods with a fixed amount: per run, and per output file. */
-const FIXED_METHODS = new Set(["cpr", "cpo"]);
-
-/**
- * A price as people read it, such as "$0.05 per run". `output` names what a per-output price
- * counts, such as "image". Prices without a fixed amount show the catalog's own note.
- */
-export function formatPrice(price: Price | undefined, output = "output"): string | undefined {
-  if (!price) return undefined;
-  if (price.method && FIXED_METHODS.has(price.method) && price.amount !== undefined && price.amount > 0) {
-    return `${formatUsd(price.amount)} per ${price.method === "cpo" ? output : "run"}`;
-  }
-  return price.note;
-}
-
-/** The lowest fixed price in a model's price list, for the search list. */
-export function startingPrice(model: Pick<WiroModel, "dynamicprice">): Price | undefined {
-  let lowest: Price | undefined;
-  for (const entry of priceEntries(model)) {
-    const amount = Number(entry.price);
-    if (!entry.priceMethod || !FIXED_METHODS.has(entry.priceMethod) || !Number.isFinite(amount) || amount <= 0)
-      continue;
-    if (!lowest || amount < (lowest.amount ?? Infinity)) lowest = { amount, method: entry.priceMethod };
-  }
-  return lowest;
+/** Whether a local file looks like the given kind, by its extension. */
+export function fileMatchesKind(path: string, kind: MediaKind): boolean {
+  if (kind === "file") return true;
+  return MEDIA_EXTENSIONS[kind].test(path);
 }

@@ -1,7 +1,8 @@
-import { Clipboard, getPreferenceValues, showInFinder, showToast, Toast } from "@raycast/api";
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { getPreferenceValues } from "@raycast/api";
+import { createHash } from "node:crypto";
+import { access, copyFile, mkdir, rename, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { extname, join } from "node:path";
+import { basename, extname, join } from "node:path";
 import { USER_AGENT, type Credentials } from "./wiro";
 
 export function credentials(): Credentials {
@@ -9,9 +10,16 @@ export function credentials(): Credentials {
   return { apiKey, apiSecret: apiSecret?.trim() ? apiSecret : undefined };
 }
 
-function saveFolder(): string {
+/** Where Save puts files: the Save Folder preference, or Downloads. */
+export function saveFolder(): string {
   const { downloadDirectory } = getPreferenceValues<Preferences>();
   return downloadDirectory?.trim() || join(homedir(), "Downloads");
+}
+
+/** "Save to Downloads", or the name of the folder the user picked. */
+export function saveTitle(): string {
+  const { downloadDirectory } = getPreferenceValues<Preferences>();
+  return downloadDirectory?.trim() ? `Save to ${basename(downloadDirectory.trim())}` : "Save to Downloads";
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -33,57 +41,55 @@ async function freePath(folder: string, name: string): Promise<string> {
   return candidate;
 }
 
-/** A file name for an output, such as `gpt-image-2-123456.png`. */
-export function outputName(baseName: string, url: string, index: number, count: number): string {
-  let extension = ".bin";
-  try {
-    extension = extname(new URL(url).pathname) || extension;
-  } catch {
-    // Keep the fallback extension.
-  }
-  const suffix = count > 1 ? `-${index + 1}` : "";
-  return `${baseName.replace(/[^a-zA-Z0-9._-]+/g, "-")}${suffix}${extension.toLowerCase()}`;
+/** A file name that is safe on disk, such as `gpt-image-2-123456.png`. */
+export function safeName(name: string): string {
+  const cleaned = name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return cleaned || "wiro-output";
 }
 
+/** Downloads to a temporary name first, so a half-written file never looks finished. */
 async function download(url: string, path: string): Promise<void> {
   const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
   if (!response.ok) throw new Error(`The download failed (HTTP ${response.status}).`);
-  await writeFile(path, Buffer.from(await response.arrayBuffer()));
+  const partial = `${path}.part`;
+  await writeFile(partial, Buffer.from(await response.arrayBuffer()));
+  await rename(partial, path);
 }
 
-export interface OutputFile {
-  url: string;
-  name: string;
+const pendingCopies = new Map<string, Promise<string>>();
+
+/**
+ * Downloads an output once into a temporary folder, for Quick Look and the clipboard. Outputs
+ * often share a name such as 0.png, so the file name starts with a hash of its address.
+ */
+export function cachedCopy(url: string, name: string, group: string): Promise<string> {
+  const folder = join(tmpdir(), "wiro-raycast", safeName(group));
+  const hash = createHash("sha1").update(url).digest("hex").slice(0, 10);
+  const path = join(folder, `${hash}-${safeName(name)}`);
+  let pending = pendingCopies.get(path);
+  if (!pending) {
+    pending = (async () => {
+      await mkdir(folder, { recursive: true });
+      if (!(await exists(path))) await download(url, path);
+      return path;
+    })();
+    pending.catch(() => pendingCopies.delete(path));
+    pendingCopies.set(path, pending);
+  }
+  return pending;
 }
 
-/** Downloads outputs into the save folder and offers to show them in Finder. */
-export async function saveOutputs(files: OutputFile[], noun: string): Promise<void> {
-  const toast = await showToast({ style: Toast.Style.Animated, title: `Saving ${noun}` });
+/**
+ * Saves an output into the save folder and returns the saved file's path. A downloaded copy
+ * or the original file wins over text, so a text file is saved byte for byte.
+ */
+export async function saveToFolder(source: { url?: string; localPath?: string; text?: string }, name: string) {
   const folder = saveFolder();
   await mkdir(folder, { recursive: true });
-  const paths: string[] = [];
-  for (const file of files) {
-    const path = await freePath(folder, file.name);
-    await download(file.url, path);
-    paths.push(path);
-  }
-  toast.style = Toast.Style.Success;
-  toast.title = paths.length > 1 ? `Saved ${paths.length} files` : `Saved ${noun}`;
-  toast.message = folder;
-  toast.primaryAction = {
-    title: "Show in Finder",
-    onAction: () => showInFinder(paths[paths.length - 1]),
-  };
-}
-
-/** Downloads one output to a temporary file and puts the file on the clipboard. */
-export async function copyOutput(file: OutputFile, noun: string): Promise<void> {
-  const toast = await showToast({ style: Toast.Style.Animated, title: `Copying ${noun}` });
-  const folder = join(tmpdir(), "wiro-raycast");
-  await mkdir(folder, { recursive: true });
-  const path = join(folder, file.name);
-  await download(file.url, path);
-  await Clipboard.copy({ file: path });
-  toast.style = Toast.Style.Success;
-  toast.title = `Copied ${noun}`;
+  const path = await freePath(folder, safeName(name));
+  if (source.localPath && (await exists(source.localPath))) await copyFile(source.localPath, path);
+  else if (source.url) await download(source.url, path);
+  else if (source.text !== undefined) await writeFile(path, source.text, "utf8");
+  else throw new Error("There is nothing to save.");
+  return path;
 }

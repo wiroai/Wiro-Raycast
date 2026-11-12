@@ -8,7 +8,6 @@ import {
   formatSeconds,
   formatUsd,
   isSuccessful,
-  mediaOutputs,
   modelPageUrl,
   runApiHeaders,
   splitSlug,
@@ -65,14 +64,6 @@ test("task status and outputs", () => {
   };
   assert.equal(isSuccessful(task), true);
   assert.equal(isSuccessful({ ...task, pexit: "1" }), false);
-  assert.deepEqual(
-    mediaOutputs(task, "image").map((output) => output.name),
-    ["0.png"],
-  );
-  assert.deepEqual(
-    mediaOutputs(task, "video").map((output) => output.name),
-    ["1.mp4"],
-  );
   assert.equal(statusLabel("task_queue"), "Waiting in queue");
   assert.equal(statusLabel("task_output"), "Generating");
   assert.equal(statusLabel("task_postprocess_end"), "Done");
