@@ -330,7 +330,7 @@ export async function getTask(tasktoken: string, credentials: Credentials, signa
   return task;
 }
 
-/** Cancels a queued task, or stops one that already runs. Stopped tasks are not charged. */
+/** Cancels a queued task, or stops one that already runs. */
 export async function stopTask(task: Pick<Task, "id" | "status">, credentials: Credentials): Promise<void> {
   const path = task.status === "task_queue" ? "/Task/Cancel" : "/Task/Kill";
   await post(path, { taskid: task.id }, credentials);

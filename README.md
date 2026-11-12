@@ -81,7 +81,7 @@ Ask AI keeps the conversation when you close Raycast. New Conversation starts a 
 
 ## Pricing
 
-Searching models and reading their settings is free. Model runs and chat messages are charged to your project's wallet at each model's price on wiro.ai. When a model has a price list, the form shows the price for your settings, and the result shows what the task cost. Tasks that fail or that you cancel are not charged. Ask AI shows each model's price per million tokens next to its answers.
+Searching models and reading their settings is free. Model runs and chat messages are charged to your project's wallet at each model's price on wiro.ai. When a model has a price list, the form shows the price for your settings, and the result shows what the task cost. Failed tasks are not charged. Ask AI shows each model's price per million tokens next to its answers.
 
 ## Development
 

@@ -144,7 +144,10 @@ export function TaskView({ kind, slug, run, prompt }: TaskViewProps) {
       .filter(Boolean)
       .join("\n\n");
   } else if (!succeeded) {
-    markdown = `## The ${noun} was not generated\n\n${failureReason(task)}\n\nTasks that do not finish are not charged.`;
+    markdown =
+      task.status === "task_cancel"
+        ? `## The task was cancelled\n\nNo ${noun} is shown for it.`
+        : `## The ${noun} was not generated\n\n${failureReason(task)}\n\nFailed tasks are not charged.`;
   } else if (results.length === 0) {
     markdown = `## The task finished without ${kind === "image" ? "an image" : "a video"}\n\nOpen your task history on wiro.ai to see what the model returned.`;
   } else if (kind === "image") {
@@ -182,7 +185,7 @@ export function TaskView({ kind, slug, run, prompt }: TaskViewProps) {
     if (!task) return;
     const confirmed = await confirmAlert({
       title: "Cancel this task?",
-      message: "The model stops working on it. Cancelled tasks are not charged.",
+      message: "The task is cancelled and its result is not shown here.",
       primaryAction: { title: "Cancel Task", style: Alert.ActionStyle.Destructive },
       dismissAction: { title: "Keep Running" },
     });
