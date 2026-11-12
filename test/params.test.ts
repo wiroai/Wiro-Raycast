@@ -26,7 +26,12 @@ const imageModel: WiroModel = {
     {
       title: "Inputs",
       items: [
-        { id: "inputImage", type: "combinefileinput", label: "Input Images", defaultvalue: "https://example.com/sample.png" },
+        {
+          id: "inputImage",
+          type: "combinefileinput",
+          label: "Input Images",
+          defaultvalue: "https://example.com/sample.png",
+        },
         { id: "prompt", type: "textarea", label: "Prompt", required: true, defaultvalue: "A sample prompt" },
         {
           id: "resolution",
@@ -51,9 +56,31 @@ const imageModel: WiroModel = {
             { value: "high", text: "High" },
           ],
         },
-        { id: "samples", type: "number", label: "Number of Images", required: true, advanced: true, defaultvalue: "1", minvalue: "1", maxvalue: "10" },
-        { id: "outputFormat", type: "select", label: "Output Format", advanced: true, defaultvalue: "png", options: [{ value: "png", text: "PNG" }] },
-        { id: "negativePrompt", type: "text", label: "Negative Prompt", placeholder: "What to avoid", defaultvalue: "sample words" },
+        {
+          id: "samples",
+          type: "number",
+          label: "Number of Images",
+          required: true,
+          advanced: true,
+          defaultvalue: "1",
+          minvalue: "1",
+          maxvalue: "10",
+        },
+        {
+          id: "outputFormat",
+          type: "select",
+          label: "Output Format",
+          advanced: true,
+          defaultvalue: "png",
+          options: [{ value: "png", text: "PNG" }],
+        },
+        {
+          id: "negativePrompt",
+          type: "text",
+          label: "Negative Prompt",
+          placeholder: "What to avoid",
+          defaultvalue: "sample words",
+        },
       ],
     },
   ],
@@ -76,12 +103,20 @@ const videoModel: WiroModel = {
         { id: "lastFrameImage", type: "combinefileinput", label: "Last Frame Image", advanced: true },
         { id: "inputImage", type: "combinefileinput", label: "First Frame" },
         { id: "prompt", type: "textarea", label: "prompt" },
-        { id: "duration", type: "select", label: "duration", required: true, defaultvalue: "5", options: [{ value: "5" }, { value: "10" }] },
+        {
+          id: "duration",
+          type: "select",
+          label: "duration",
+          required: true,
+          defaultvalue: "5",
+          options: [{ value: "5" }, { value: "10" }],
+        },
         { id: "watermark", type: "checkbox", label: "Watermark", defaultvalue: "false" },
       ],
     },
   ],
-  dynamicprice: '[{"inputs":{"duration":"5"},"price":0.47,"priceMethod":"cpr"},{"inputs":{"duration":"10"},"price":0.94,"priceMethod":"cpr"}]',
+  dynamicprice:
+    '[{"inputs":{"duration":"5"},"price":0.47,"priceMethod":"cpr"},{"inputs":{"duration":"10"},"price":0.94,"priceMethod":"cpr"}]',
 };
 
 test("prompt and image inputs are found", () => {
@@ -126,7 +161,9 @@ test("form values become run parameters", () => {
   const fields = modelFields(videoModel);
   assert.deepEqual(fieldParams(fields, { duration: "10", watermark: true }), { duration: "10", watermark: "true" });
   const numberField = modelFields({
-    parameters: [{ items: [{ id: "steps", type: "number", label: "Steps", minvalue: 1, maxvalue: 50, defaultvalue: 20 }] }],
+    parameters: [
+      { items: [{ id: "steps", type: "number", label: "Steps", minvalue: 1, maxvalue: 50, defaultvalue: 20 }] },
+    ],
   })[0];
   assert.equal(numberField.defaultValue, "20");
   assert.equal(validateField(numberField, "0"), "Minimum is 1");

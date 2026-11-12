@@ -26,9 +26,7 @@ test("API Key Only projects send just the key", () => {
 
 test("signature projects sign the secret and a nonce with the key", () => {
   const headers = runApiHeaders({ apiKey: "key-1", apiSecret: "secret-1" });
-  const expected = createHmac("sha256", "key-1")
-    .update(`secret-1${headers["x-nonce"]}`)
-    .digest("hex");
+  const expected = createHmac("sha256", "key-1").update(`secret-1${headers["x-nonce"]}`).digest("hex");
   assert.match(headers["x-nonce"], /^\d+$/);
   assert.equal(headers["x-signature"], expected);
 });
