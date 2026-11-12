@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/lib/wiro.ts", "src/lib/params.ts", "src/lib/gateway.ts", "test/**/*.ts"],
+  "compilerOptions": {
+    "outDir": ".test-build",
+    "rootDir": "."
+  }
+}
