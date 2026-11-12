@@ -182,9 +182,10 @@ export function Chat({ initialQuestion, initialModel }: ChatProps) {
 
   const answerOf = (exchange: Exchange) => (streaming?.id === exchange.id ? streaming.text : exchange.answer);
 
-  const sendAction = searchText.trim() ? (
-    <Action title="Send Message" icon={Icon.Message} onAction={() => ask(searchText)} />
-  ) : undefined;
+  const sendAction =
+    searchText.trim() && !busy ? (
+      <Action title="Send Message" icon={Icon.Message} onAction={() => ask(searchText)} />
+    ) : undefined;
 
   const commonActions = (
     <>
@@ -226,15 +227,17 @@ export function Chat({ initialQuestion, initialModel }: ChatProps) {
       selectedItemId={selectedId}
       onSelectionChange={(id) => setSelectedId(id ?? undefined)}
       searchBarAccessory={
-        <List.Dropdown tooltip="Model" value={model} onChange={chooseModel}>
-          {groupByOwner(dropdownModels).map(([owner, group]) => (
-            <List.Dropdown.Section key={owner} title={ownerTitle(owner)}>
-              {group.map((item) => (
-                <List.Dropdown.Item key={item.id} value={item.id} title={item.id} keywords={[item.name]} />
-              ))}
-            </List.Dropdown.Section>
-          ))}
-        </List.Dropdown>
+        dropdownModels.length > 0 ? (
+          <List.Dropdown tooltip="Model" value={model} onChange={chooseModel}>
+            {groupByOwner(dropdownModels).map(([owner, group]) => (
+              <List.Dropdown.Section key={owner} title={ownerTitle(owner)}>
+                {group.map((item) => (
+                  <List.Dropdown.Item key={item.id} value={item.id} title={item.id} keywords={[item.name]} />
+                ))}
+              </List.Dropdown.Section>
+            ))}
+          </List.Dropdown>
+        ) : undefined
       }
       actions={rootActions}
     >

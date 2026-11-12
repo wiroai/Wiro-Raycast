@@ -118,9 +118,10 @@ export default function SearchModels() {
         </List.Dropdown>
       }
     >
-      {error && models.length === 0 ? (
+      {!isLoading && models.length === 0 && error && (
         <List.EmptyView icon={Icon.Warning} title="Could not load models" description={error.message} />
-      ) : (
+      )}
+      {!isLoading && models.length === 0 && !error && (
         <List.EmptyView
           icon={Icon.MagnifyingGlass}
           title="No models found"
