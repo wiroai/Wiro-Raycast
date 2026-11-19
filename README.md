@@ -16,6 +16,8 @@ Generate images, video, speech and music, edit images, transcribe audio, chat wi
 
 This [Raycast](https://www.raycast.com) extension puts the [Wiro AI](https://wiro.ai) API in your launcher. Each command lists the models of its category straight from the Wiro AI catalog, builds its form from the chosen model's own inputs and shows the price for your settings before you run it. Results come back into Raycast, where you can copy them, save them to Downloads, show them in Finder or preview them with Quick Look. New models show up without an update to the extension.
 
+![Generate Image returned a Nano Banana 2.1 image in Raycast, with its model, run time and cost](metadata/wiro-ai-2.png)
+
 ## Commands
 
 | Command | What it does |
@@ -47,6 +49,17 @@ Every output is a row with a preview beside it.
 | Text | Copy Text (`↵`), Paste Text (`⌘⇧↵`), Save to Downloads (`⌘S`), Show in Finder (`⌘⇧F`) |
 
 While a task runs you can open your task history on wiro.ai or cancel the task (`⌃X`). Closing Raycast does not stop a task; its result is in Task History.
+
+## Screenshots
+
+| | |
+| --- | --- |
+| ![Generate Image with a prompt and the price for the chosen settings](metadata/wiro-ai-1.png) | ![Edit Image set to Remove Background for an image selected in Finder](metadata/wiro-ai-3.png) |
+| **Generate Image** shows the price before you run it. | **Edit Image** starts from the image selected in Finder. |
+| ![Ask AI answering with GPT-5.4 Mini, with the tokens used and the price per million tokens](metadata/wiro-ai-4.png) | ![Search Models showing Kling 4 Flash with its categories, run time and starting price](metadata/wiro-ai-5.png) |
+| **Ask AI** shows the tokens each answer used. | **Search Models** shows each model's run time and starting price. |
+| ![Task History filtered to an image task, with its result and cost](metadata/wiro-ai-6.png) | |
+| **Task History** opens the results of earlier tasks. | |
 
 ## Install
 
