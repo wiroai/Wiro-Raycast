@@ -84,7 +84,7 @@ const imageModel: WiroModel = {
       ],
     },
   ],
-  dynamicprice: [{ inputs: { quality: "low", resolution: "1k" }, price: 0.006, priceMethod: "cpr" }],
+  dynamicprice: [{ inputs: { quality: "low", resolution: "1k" }, price: 0.006, priceMethod: "per-run" }],
 };
 
 // Shaped like Tool/Detail for a video model whose image input is optional.
@@ -248,7 +248,8 @@ test("adult-content and live models stay out of the lists", () => {
   assert.equal(isListedModel("acme/model", "Model", "An abliterated chat model"), false);
   assert.equal(isListedModel("acme/nsfw-detector", "NSFW Detector"), true, "moderation tools stay");
   assert.equal(isLiveModel({ categories: ["realtime-conversation"] }), true);
-  assert.equal(isLiveModel({ dynamicprice: '[{"priceMethod":"cp-realtimeturn","price":0.01}]' }), true);
+  assert.equal(isLiveModel({ dynamicprice: '[{"priceMethod":"per-realtime-turn","price":0.01}]' }), true);
+  assert.equal(isLiveModel({ dynamicprice: '[{"priceMethod":"cp-realtimeturn","price":0.01}]' }), false);
   assert.equal(isLiveModel({ categories: ["speech-to-text"] }), false);
 });
 
