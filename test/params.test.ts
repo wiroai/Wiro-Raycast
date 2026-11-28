@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   fieldParams,
   fileMatchesKind,
+  fileSlotError,
   fileSlots,
   hiddenDefaults,
   inputFit,
@@ -10,10 +11,12 @@ import {
   isLiveModel,
   modelFields,
   primarySlot,
+  promptError,
   promptParameter,
   titleCase,
   validateField,
 } from "../src/lib/params";
+import type { FileSlot } from "../src/lib/params";
 import type { WiroModel } from "../src/lib/wiro";
 
 // Shaped like Tool/Detail for an image model with a price list.
@@ -275,4 +278,25 @@ test("a number field without a range or placeholder falls back to its title", ()
   const fields = modelFields(model);
   assert.equal(fields.find((item) => item.id === "seed")?.placeholder, "Seed");
   assert.equal(fields.find((item) => item.id === "steps")?.placeholder, "1 to 50");
+});
+
+test("a file slot needs a file when it is the job's input or required, and files of its kind", () => {
+  const audio: FileSlot = { param: { id: "inputAudio", type: "fileinput" }, kind: "audio", multiple: false };
+  const optional: FileSlot = { param: { id: "mask", type: "fileinput" }, kind: "image", multiple: false };
+  const required: FileSlot = { ...optional, param: { ...optional.param, required: true } };
+  assert.equal(fileSlotError(audio, [], true), "Choose a file");
+  assert.equal(fileSlotError(optional, [], false), undefined);
+  assert.equal(fileSlotError(required, [], false), "Choose a file");
+  assert.equal(fileSlotError(audio, ["/tmp/song.png"], true), "Choose an audio file");
+  assert.equal(fileSlotError(optional, ["/tmp/a.png", "/tmp/notes.txt"], false), "Choose an image file");
+  assert.equal(fileSlotError(audio, ["/tmp/song.mp3"], true), undefined);
+  const anyFile: FileSlot = { param: { id: "inputFile", type: "fileinput" }, kind: "file", multiple: true };
+  assert.equal(fileSlotError(anyFile, ["/tmp/notes.txt"], false), undefined);
+});
+
+test("a required prompt must not be blank, and the message names the job's prompt", () => {
+  assert.equal(promptError(false, ""), undefined);
+  assert.equal(promptError(true, "  "), "Write a prompt");
+  assert.equal(promptError(true, "", "Lyrics"), "Write the lyrics");
+  assert.equal(promptError(true, "a red fox"), undefined);
 });
